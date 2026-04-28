@@ -45,46 +45,54 @@ pipeline {
 
         stage('Stop Old Containers') {
             steps {
-                sh '''
-                docker stop backend-${ENV} || true
-                docker rm backend-${ENV} || true
-                docker stop frontend-${ENV} || true
-                docker rm frontend-${ENV} || true
-                '''
+                sh """
+                docker stop backend-${params.ENV} || true
+                docker rm backend-${params.ENV} || true
+                docker stop frontend-${params.ENV} || true
+                docker rm frontend-${params.ENV} || true
+                """
             }
         }
 
         stage('Run Backend') {
             steps {
-                withCredentials([file(credentialsId: "backend-env-${params.ENV}", variable: 'ENV_FILE')]) {
-                    sh '''
-                    docker run -d \
-                    --name backend-${ENV} \
-                    --network $NETWORK \
-                    -p 500${ENV == "dev" ? "0" : "1"}:5000 \
-                    --env-file $ENV_FILE \
-                    ${BACKEND_IMAGE}:${ENV}
-                    '''
+                withCredentials([file(credentialsId: "backend-${params.ENV}.env", variable: 'ENV_FILE')]) {
+                    script {
+                        def port = (params.ENV == "dev") ? "5000" : "5001"
+
+                        sh """
+                        docker run -d \
+                        --name backend-${params.ENV} \
+                        --network $NETWORK \
+                        -p ${port}:5000 \
+                        --env-file $ENV_FILE \
+                        ${BACKEND_IMAGE}:${params.ENV}
+                        """
+                    }
                 }
             }
         }
 
         stage('Run Frontend') {
             steps {
-                sh '''
-                docker run -d \
-                --name frontend-${ENV} \
-                --network $NETWORK \
-                -p ${ENV == "dev" ? "8081" : "8082"}:80 \
-                ${FRONTEND_IMAGE}:${ENV}
-                '''
+                script {
+                    def port = (params.ENV == "dev") ? "8081" : "8082"
+
+                    sh """
+                    docker run -d \
+                    --name frontend-${params.ENV} \
+                    --network $NETWORK \
+                    -p ${port}:80 \
+                    ${FRONTEND_IMAGE}:${params.ENV}
+                    """
+                }
             }
         }
     }
 
     post {
         success {
-            echo "Deployment Successful for ${ENV}"
+            echo "Deployment Successful for ${params.ENV}"
         }
         failure {
             echo "Build Failed"
