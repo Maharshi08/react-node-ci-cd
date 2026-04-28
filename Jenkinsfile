@@ -7,24 +7,24 @@ pipeline {
 
     stages {
 
-        stage('Checkout Code') {
+        stage('Checkout') {
             steps {
                 git branch: 'main', url: 'https://github.com/Maharshi08/react-node-ci-cd.git'
             }
         }
 
-        stage('Verify Code Pulled') {
+        stage('Build Backend') {
             steps {
                 dir('backend') {
-                    sh 'docker build -t backend-app .'
+                    sh "docker build -t backend:${params.ENV} ."
                 }
             }
         }
 
-        stage('Docker Login Test') {
+        stage('Build Frontend') {
             steps {
                 dir('frontend') {
-                    sh 'docker build -t frontend-app .'
+                    sh "docker build -t frontend:${params.ENV} ."
                 }
             }
         }
@@ -32,19 +32,35 @@ pipeline {
         stage('Stop Old Containers') {
             steps {
                 sh '''
-                    docker stop backend || true
-                    docker rm backend || true
-                    docker stop frontend || true
-                    docker rm frontend || true
+                    docker stop backend-${ENV} || true
+                    docker rm backend-${ENV} || true
+                    docker stop frontend-${ENV} || true
+                    docker rm frontend-${ENV} || true
                 '''
             }
         }
 
-        stage('Run Containers') {
+        stage('Run Backend') {
             steps {
                 sh '''
-                    docker run -d --name backend -p 5000:5000 backend-app
-                    docker run -d --name frontend -p 80:80 frontend-app
+                    docker run -d \
+                    --name backend-${ENV} \
+                    --network app-network \
+                    -p 5000:5000 \
+                    --env-file backend/.env.${ENV} \
+                    backend:${ENV}
+                '''
+            }
+        }
+
+        stage('Run Frontend') {
+            steps {
+                sh '''
+                    docker run -d \
+                    --name frontend-${ENV} \
+                    --network app-network \
+                    -p 80:80 \
+                    frontend:${ENV}
                 '''
             }
         }
@@ -52,10 +68,10 @@ pipeline {
 
     post {
         success {
-            echo "Deployment Successful "
+            echo "Deployment Successful"
         }
         failure {
-            echo "Build Failed "
+            echo "Build Failed"
         }
     }
 }
