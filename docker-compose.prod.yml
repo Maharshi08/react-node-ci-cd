@@ -1,9 +1,6 @@
-version: "3.9"
-
 services:
   mongo-prod:
     image: mongo:6
-    container_name: mongo-prod
     networks:
       - app-network
     restart: unless-stopped
@@ -12,7 +9,6 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: backend-prod
     env_file:
       - ./.env.prod
     ports:
@@ -27,7 +23,6 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: frontend-prod
     depends_on:
       - backend-prod
     networks:
@@ -36,7 +31,6 @@ services:
 
   nginx-prod:
     image: nginx:alpine
-    container_name: nginx-prod
     ports:
       - "80:80"
     volumes:

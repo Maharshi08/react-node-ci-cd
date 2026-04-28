@@ -1,9 +1,6 @@
-version: "3.9"
-
 services:
   mongo-dev:
     image: mongo:6
-    container_name: mongo-dev
     ports:
       - "27017:27017"
     networks:
@@ -14,7 +11,6 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
-    container_name: backend-dev
     env_file:
       - ./.env.dev
     ports:
@@ -33,7 +29,6 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev
-    container_name: frontend-dev
     env_file:
       - ./.env.dev
     ports:
