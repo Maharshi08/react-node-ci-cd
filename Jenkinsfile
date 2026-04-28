@@ -12,6 +12,16 @@ pipeline {
             defaultValue: true,
             description: 'Build Docker images with --no-cache'
         )
+        booleanParam(
+            name: 'PUSH_TO_DOCKERHUB',
+            defaultValue: false,
+            description: 'Push prod images to Docker Hub'
+        )
+        string(
+            name: 'DOCKERHUB_CREDENTIALS_ID',
+            defaultValue: 'dockerhub',
+            description: 'Jenkins credentials ID for Docker Hub (username/password)'
+        )
     }
 
     environment {
@@ -120,6 +130,27 @@ EOF
                     fi
                     sleep 10
                 '''
+            }
+        }
+
+        stage('Push Images') {
+            when {
+                expression { params.TARGET_ENV == 'prod' && params.PUSH_TO_DOCKERHUB }
+            }
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: params.DOCKERHUB_CREDENTIALS_ID,
+                    usernameVariable: 'DOCKERHUB_USER',
+                    passwordVariable: 'DOCKERHUB_PASS'
+                )]) {
+                    sh '''
+                        echo "${DOCKERHUB_PASS}" | docker login -u "${DOCKERHUB_USER}" --password-stdin
+                        docker push maharshi86/react-node-ci-backend:prod-latest
+                        docker push maharshi86/react-node-ci-frontend:prod-latest
+                        docker push maharshi86/react-node-ci-nginx:prod-latest
+                        docker logout || true
+                    '''
+                }
             }
         }
 
