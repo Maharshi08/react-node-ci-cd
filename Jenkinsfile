@@ -56,16 +56,21 @@ pipeline {
 
         stage('Run Backend') {
             steps {
-                withCredentials([file(credentialsId: "backend-${params.ENV}.env", variable: 'ENV_FILE')]) {
+                withCredentials([file(credentialsId: "backend-env-${params.ENV}", variable: 'ENV_FILE')]) {
                     script {
+
                         def port = (params.ENV == "dev") ? "5000" : "5001"
 
                         sh """
+                        echo "==== ENV FILE CONTENT (DEBUG) ===="
+                        cat \$ENV_FILE
+                        echo "==================================="
+
                         docker run -d \
                         --name backend-${params.ENV} \
                         --network $NETWORK \
                         -p ${port}:5000 \
-                        --env-file $ENV_FILE \
+                        --env-file "\$ENV_FILE" \
                         ${BACKEND_IMAGE}:${params.ENV}
                         """
                     }
@@ -76,6 +81,7 @@ pipeline {
         stage('Run Frontend') {
             steps {
                 script {
+
                     def port = (params.ENV == "dev") ? "8081" : "8082"
 
                     sh """
