@@ -16,6 +16,7 @@ pipeline {
 
     environment {
         COMPOSE_DEV = 'docker-compose.dev.yml'
+        COMPOSE_DEV_CI = 'docker-compose.dev.ci.yml'
         COMPOSE_PROD = 'docker-compose.prod.yml'
     }
 
@@ -75,7 +76,7 @@ EOF
                     if [ "${TARGET_ENV}" = "prod" ]; then
                       ${COMPOSE_BIN} -f "${COMPOSE_PROD}" down -v --remove-orphans 2>/dev/null || true
                     else
-                      ${COMPOSE_BIN} -f "${COMPOSE_DEV}" down -v --remove-orphans 2>/dev/null || true
+                      ${COMPOSE_BIN} -f "${COMPOSE_DEV}" -f "${COMPOSE_DEV_CI}" down -v --remove-orphans 2>/dev/null || true
                     fi
                 '''
             }
@@ -97,7 +98,7 @@ EOF
                     if [ "${TARGET_ENV}" = "prod" ]; then
                       ${COMPOSE_BIN} -f "${COMPOSE_PROD}" build ${CACHE_FLAG}
                     else
-                      ${COMPOSE_BIN} -f "${COMPOSE_DEV}" build ${CACHE_FLAG}
+                      ${COMPOSE_BIN} -f "${COMPOSE_DEV}" -f "${COMPOSE_DEV_CI}" build ${CACHE_FLAG}
                     fi
                 '''
             }
@@ -115,7 +116,7 @@ EOF
                       ${COMPOSE_BIN} -f "${COMPOSE_PROD}" up -d
                     else
                       DEV_FRONTEND_PORT=18081 DEV_BACKEND_PORT=15000 DEV_MONGO_PORT=37017 \
-                        ${COMPOSE_BIN} -f "${COMPOSE_DEV}" up -d
+                        ${COMPOSE_BIN} -f "${COMPOSE_DEV}" -f "${COMPOSE_DEV_CI}" up -d
                     fi
                     sleep 10
                 '''
@@ -144,7 +145,7 @@ EOF
                 if [ "${TARGET_ENV}" = "prod" ]; then
                   ${COMPOSE_BIN} -f "${COMPOSE_PROD}" logs || true
                 else
-                  ${COMPOSE_BIN} -f "${COMPOSE_DEV}" logs || true
+                  ${COMPOSE_BIN} -f "${COMPOSE_DEV}" -f "${COMPOSE_DEV_CI}" logs || true
                 fi
             '''
         }
