@@ -5,21 +5,7 @@ pipeline {
         choice(name: 'ENV', choices: ['dev', 'prod'], description: 'Select Environment')
     }
 
-    environment {
-        BACKEND_IMAGE = "backend"
-        FRONTEND_IMAGE = "frontend"
-        NETWORK = "app-network"
-    }
-
     stages {
-
-        stage('Prepare Network') {
-            steps {
-                sh '''
-                docker network create $NETWORK || true
-                '''
-            }
-        }
 
         stage('Checkout') {
             steps {
@@ -27,81 +13,30 @@ pipeline {
             }
         }
 
-        stage('Build Backend') {
-            steps {
-                dir('backend') {
-                    sh "docker build -t ${BACKEND_IMAGE}:${params.ENV} ."
-                }
-            }
-        }
-
-        stage('Build Frontend') {
-            steps {
-                dir('frontend') {
-                    sh "docker build -t ${FRONTEND_IMAGE}:${params.ENV} ."
-                }
-            }
-        }
-
-        stage('Stop Old Containers') {
+        stage('Build Images') {
             steps {
                 sh """
-                docker stop backend-${params.ENV} || true
-                docker rm backend-${params.ENV} || true
-                docker stop frontend-${params.ENV} || true
-                docker rm frontend-${params.ENV} || true
+                docker compose build
                 """
             }
         }
 
-        stage('Run Backend') {
+        stage('Deploy') {
             steps {
-                withCredentials([file(credentialsId: "backend-env-${params.ENV}", variable: 'ENV_FILE')]) {
-                    script {
-
-                        def port = (params.ENV == "dev") ? "5000" : "5001"
-
-                        sh """
-                        echo "==== ENV FILE CONTENT (DEBUG) ===="
-                        cat \$ENV_FILE
-                        echo "==================================="
-
-                        docker run -d \
-                        --name backend-${params.ENV} \
-                        --network $NETWORK \
-                        -p ${port}:5000 \
-                        --env-file "\$ENV_FILE" \
-                        ${BACKEND_IMAGE}:${params.ENV}
-                        """
-                    }
-                }
-            }
-        }
-
-        stage('Run Frontend') {
-            steps {
-                script {
-
-                    def port = (params.ENV == "dev") ? "8081" : "8082"
-
-                    sh """
-                    docker run -d \
-                    --name frontend-${params.ENV} \
-                    --network $NETWORK \
-                    -p ${port}:80 \
-                    ${FRONTEND_IMAGE}:${params.ENV}
-                    """
-                }
+                sh """
+                docker compose down || true
+                docker compose up -d
+                """
             }
         }
     }
 
     post {
         success {
-            echo "Deployment Successful for ${params.ENV}"
+            echo "Deployment Successful "
         }
         failure {
-            echo "Build Failed"
+            echo "Deployment Failed "
         }
     }
 }

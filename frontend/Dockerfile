@@ -1,5 +1,5 @@
-# Build stage
-FROM node:18-alpine AS build
+# build stage
+FROM node:20-alpine AS build
 
 WORKDIR /app
 
@@ -9,12 +9,10 @@ RUN npm install
 COPY . .
 RUN npm run build
 
-# Production stage
+# nginx stage
 FROM nginx:alpine
 
 COPY --from=build /app/build /usr/share/nginx/html
-
-# ✅ IMPORTANT FIX
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
