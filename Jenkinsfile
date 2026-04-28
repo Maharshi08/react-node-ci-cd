@@ -114,7 +114,8 @@ EOF
                     if [ "${TARGET_ENV}" = "prod" ]; then
                       ${COMPOSE_BIN} -f "${COMPOSE_PROD}" up -d
                     else
-                      ${COMPOSE_BIN} -f "${COMPOSE_DEV}" up -d
+                      DEV_FRONTEND_PORT=18081 DEV_BACKEND_PORT=15000 DEV_MONGO_PORT=37017 \
+                        ${COMPOSE_BIN} -f "${COMPOSE_DEV}" up -d
                     fi
                     sleep 10
                 '''
