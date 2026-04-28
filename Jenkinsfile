@@ -1,14 +1,6 @@
 pipeline {
     agent any
 
-    parameters {
-        choice(name: 'ENV', choices: ['dev', 'prod'], description: 'Select Environment')
-    }
-
-    environment {
-        COMPOSE_PROJECT = "react-node-app"
-    }
-
     stages {
 
         stage('Checkout') {
@@ -17,10 +9,10 @@ pipeline {
             }
         }
 
-        stage('Stop Existing Stack (Avoid Port Conflict)') {
+        stage('Stop Stack') {
             steps {
                 sh """
-                docker compose down --remove-orphans || true
+                docker compose down || true
                 """
             }
         }
@@ -36,26 +28,24 @@ pipeline {
         stage('Deploy') {
             steps {
                 sh """
-                docker compose up -d --force-recreate
+                docker compose up -d
                 """
             }
         }
 
-        stage('Verify Containers') {
+        stage('Verify') {
             steps {
-                sh """
-                docker ps
-                """
+                sh "docker ps"
             }
         }
     }
 
     post {
         success {
-            echo "Deployment Successful "
+            echo "Deployment Successful 🚀"
         }
         failure {
-            echo "Deployment Failed "
+            echo "Deployment Failed ❌"
         }
     }
 }
