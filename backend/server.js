@@ -10,8 +10,8 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-// Debug env
-console.log("MONGO_URI:", process.env.MONGO_URI);
+// Debug env (optional)
+console.log("DB_URL:", process.env.DB_URL);
 
 // Schema
 const userSchema = new mongoose.Schema({
@@ -44,14 +44,14 @@ app.get("/api/users", async (req, res) => {
 });
 
 // Connect DB and then start server
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => {
-    console.log("MongoDB Connected");
+mongoose.connect(process.env.DB_URL)
+.then(() => {
+  console.log("MongoDB Connected");
 
   app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on port ${PORT}`);
-});
-  })
-  .catch(err => {
-    console.error("Mongo Error:", err);
+    console.log(`Server running on port ${PORT}`);
   });
+})
+.catch(err => {
+  console.error("Mongo Error:", err);
+});
