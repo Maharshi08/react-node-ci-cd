@@ -28,6 +28,8 @@ services:
       dockerfile: Dockerfile.dev
     env_file:
       - ./.env.dev
+    environment:
+      - PORT=3000
     ports:
       - "${DEV_FRONTEND_PORT:-18081}:3000"
     depends_on:
