@@ -1,0 +1,42 @@
+services:
+  mongo-dev:
+    image: mongo:6
+    ports:
+      - "${DEV_MONGO_PORT:-37017}:27017"
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  backend-dev:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    env_file:
+      - ./.env.dev
+    ports:
+      - "${DEV_BACKEND_PORT:-15000}:5000"
+    depends_on:
+      - mongo-dev
+    command: npm run dev
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  frontend-dev:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    env_file:
+      - ./.env.dev
+    ports:
+      - "${DEV_FRONTEND_PORT:-18081}:3000"
+    depends_on:
+      - backend-dev
+    command: npm start
+    networks:
+      - app-network
+    restart: unless-stopped
+
+networks:
+  app-network:
+    driver: bridge
