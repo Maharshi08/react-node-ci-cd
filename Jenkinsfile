@@ -3,55 +3,41 @@ pipeline {
 
     stages {
 
-        stage('Checkout') {
+        stage('Checkout Code') {
             steps {
-                git branch: 'main', url: 'YOUR_GIT_REPO_URL'
+                git branch: 'main', url: 'https://github.com/Maharshi08/react-node-ci-cd.git'
             }
         }
 
-        stage('Build Backend Image') {
+        stage('Verify Code Pulled') {
             steps {
-                dir('backend') {
-                    sh 'docker build -t backend-app .'
+                sh 'ls -la'
+            }
+        }
+
+        stage('Docker Login Test') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'docker-hub-cred',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh '''
+                        echo "Logging into Docker Hub..."
+                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                    '''
                 }
             }
         }
 
-        stage('Build Frontend Image') {
-            steps {
-                dir('frontend') {
-                    sh 'docker build -t frontend-app .'
-                }
-            }
-        }
-
-        stage('Stop Old Containers') {
-            steps {
-                sh '''
-                    docker stop backend || true
-                    docker rm backend || true
-                    docker stop frontend || true
-                    docker rm frontend || true
-                '''
-            }
-        }
-
-        stage('Run Containers') {
-            steps {
-                sh '''
-                    docker run -d --name backend -p 5000:5000 backend-app
-                    docker run -d --name frontend -p 80:80 frontend-app
-                '''
-            }
-        }
     }
 
     post {
         success {
-            echo "Deployment Successful "
+            echo "Git checkout & Docker login SUCCESS"
         }
         failure {
-            echo "Build Failed "
+            echo "Something failed - check logs"
         }
     }
 }
