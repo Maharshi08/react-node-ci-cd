@@ -43,6 +43,10 @@ app.get("/api/users", async (req, res) => {
   }
 });
 
+app.get("/api", (req, res) => {
+  res.json({ status: "ok" });
+});
+
 // Connect DB and then start server
 mongoose.connect(process.env.DB_URL)
 .then(() => {

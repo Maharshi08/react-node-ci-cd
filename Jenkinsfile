@@ -5,7 +5,7 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/Maharshi08/react-node-ci-cd.git'
+                checkout scm
             }
         }
 
