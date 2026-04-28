@@ -5,7 +5,21 @@ pipeline {
         choice(name: 'ENV', choices: ['dev', 'prod'], description: 'Select Environment')
     }
 
+    environment {
+        BACKEND_IMAGE = "backend"
+        FRONTEND_IMAGE = "frontend"
+        NETWORK = "app-network"
+    }
+
     stages {
+
+        stage('Prepare Network') {
+            steps {
+                sh '''
+                docker network create $NETWORK || true
+                '''
+            }
+        }
 
         stage('Checkout') {
             steps {
@@ -16,7 +30,7 @@ pipeline {
         stage('Build Backend') {
             steps {
                 dir('backend') {
-                    sh "docker build -t backend:${params.ENV} ."
+                    sh "docker build -t ${BACKEND_IMAGE}:${params.ENV} ."
                 }
             }
         }
@@ -24,7 +38,7 @@ pipeline {
         stage('Build Frontend') {
             steps {
                 dir('frontend') {
-                    sh "docker build -t frontend:${params.ENV} ."
+                    sh "docker build -t ${FRONTEND_IMAGE}:${params.ENV} ."
                 }
             }
         }
@@ -32,35 +46,37 @@ pipeline {
         stage('Stop Old Containers') {
             steps {
                 sh '''
-                    docker stop backend-${ENV} || true
-                    docker rm backend-${ENV} || true
-                    docker stop frontend-${ENV} || true
-                    docker rm frontend-${ENV} || true
+                docker stop backend-${ENV} || true
+                docker rm backend-${ENV} || true
+                docker stop frontend-${ENV} || true
+                docker rm frontend-${ENV} || true
                 '''
             }
         }
 
         stage('Run Backend') {
             steps {
-                sh '''
+                withCredentials([file(credentialsId: "backend-env-${params.ENV}", variable: 'ENV_FILE')]) {
+                    sh '''
                     docker run -d \
                     --name backend-${ENV} \
-                    --network app-network \
-                    -p 5000:5000 \
-                    --env-file backend/.env.${ENV} \
-                    backend:${ENV}
-                '''
+                    --network $NETWORK \
+                    -p 500${ENV == "dev" ? "0" : "1"}:5000 \
+                    --env-file $ENV_FILE \
+                    ${BACKEND_IMAGE}:${ENV}
+                    '''
+                }
             }
         }
 
         stage('Run Frontend') {
             steps {
                 sh '''
-                    docker run -d \
-                    --name frontend-${ENV} \
-                    --network app-network \
-                    -p 80:80 \
-                    frontend:${ENV}
+                docker run -d \
+                --name frontend-${ENV} \
+                --network $NETWORK \
+                -p ${ENV == "dev" ? "8081" : "8082"}:80 \
+                ${FRONTEND_IMAGE}:${ENV}
                 '''
             }
         }
@@ -68,7 +84,7 @@ pipeline {
 
     post {
         success {
-            echo "Deployment Successful"
+            echo "Deployment Successful for ${ENV}"
         }
         failure {
             echo "Build Failed"
