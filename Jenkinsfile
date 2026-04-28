@@ -5,11 +5,23 @@ pipeline {
         choice(name: 'ENV', choices: ['dev', 'prod'], description: 'Select Environment')
     }
 
+    environment {
+        COMPOSE_PROJECT = "react-node-app"
+    }
+
     stages {
 
         stage('Checkout') {
             steps {
                 git branch: 'main', url: 'https://github.com/Maharshi08/react-node-ci-cd.git'
+            }
+        }
+
+        stage('Stop Existing Stack (Avoid Port Conflict)') {
+            steps {
+                sh """
+                docker compose down --remove-orphans || true
+                """
             }
         }
 
@@ -24,8 +36,15 @@ pipeline {
         stage('Deploy') {
             steps {
                 sh """
-                docker compose down || true
-                docker compose up -d
+                docker compose up -d --force-recreate
+                """
+            }
+        }
+
+        stage('Verify Containers') {
+            steps {
+                sh """
+                docker ps
                 """
             }
         }
