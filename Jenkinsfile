@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    options {
+        skipDefaultCheckout(true)
+    }
+
     parameters {
         choice(
             name: 'TARGET_ENV',
@@ -20,96 +24,80 @@ pipeline {
         string(
             name: 'DOCKERHUB_CREDENTIALS_ID',
             defaultValue: 'dockerhub',
-            description: 'Jenkins credentials ID for Docker Hub (username/password)'
+            description: 'Jenkins credentials ID for Docker Hub'
+        )
+        string(
+            name: 'DOCKERHUB_NAMESPACE',
+            defaultValue: 'maharshi86',
+            description: 'Docker Hub namespace/user'
+        )
+        string(
+            name: 'DEV_ENV_CREDENTIALS_ID',
+            defaultValue: 'react-node-ci-env-dev',
+            description: 'Jenkins secret text credentials ID for dev env'
+        )
+        string(
+            name: 'PROD_ENV_CREDENTIALS_ID',
+            defaultValue: 'react-node-ci-env-prod',
+            description: 'Jenkins secret text credentials ID for prod env'
         )
     }
 
     environment {
-        COMPOSE_DEV = 'docker-compose.dev.yml'
-        COMPOSE_DEV_CI = 'docker-compose.ci.dev.yml'
-        COMPOSE_PROD = 'docker-compose.prod.yml'
+        DEV_COMPOSE_FILE = 'docker-compose.ci.dev.yml'
+        PROD_COMPOSE_FILE = 'docker-compose.prod.yml'
     }
 
     stages {
-        stage('Prepare Env') {
+        stage('Checkout') {
             steps {
-                sh '''
-                    if docker compose version >/dev/null 2>&1; then
-                      COMPOSE_BIN="docker compose"
-                    elif command -v docker-compose >/dev/null 2>&1; then
-                      COMPOSE_BIN="docker-compose"
-                    else
-                      echo "ERROR: neither 'docker compose' nor 'docker-compose' is available"
-                      exit 1
-                    fi
-
-                    if [ "${TARGET_ENV}" = "prod" ]; then
-                      if [ -f ".env.prod.example" ]; then
-                        cp .env.prod.example .env.prod
-                      elif [ ! -f ".env.prod" ]; then
-                        cat > .env.prod << 'EOF'
-NODE_ENV=production
-PORT=5000
-DB_URL=mongodb://mongo-prod:27017/proddb
-PUBLIC_URL=/
-EOF
-                      fi
-                      COMPOSE_FILE_NAME="${COMPOSE_PROD}"
-                    else
-                      if [ -f ".env.dev.example" ]; then
-                        cp .env.dev.example .env.dev
-                      elif [ ! -f ".env.dev" ]; then
-                        cat > .env.dev << 'EOF'
-NODE_ENV=development
-PORT=5000
-DB_URL=mongodb://mongo-dev:27017/devdb
-CHOKIDAR_USEPOLLING=true
-WDS_SOCKET_PORT=0
-EOF
-                      fi
-                      COMPOSE_FILE_NAME="${COMPOSE_DEV}"
-                    fi
-                    echo "Compose command: ${COMPOSE_BIN}"
-                    echo "Using compose file: ${COMPOSE_FILE_NAME}"
-                '''
+                checkout scm
             }
         }
 
-        stage('Cleanup') {
+        stage('Prepare') {
             steps {
-                sh '''
-                    if docker compose version >/dev/null 2>&1; then
-                      COMPOSE_BIN="docker compose"
-                    else
-                      COMPOSE_BIN="docker-compose"
-                    fi
-                    if [ "${TARGET_ENV}" = "prod" ]; then
-                      ${COMPOSE_BIN} -f "${COMPOSE_PROD}" down -v --remove-orphans 2>/dev/null || true
-                    else
-                      ${COMPOSE_BIN} -f "${COMPOSE_DEV_CI}" down -v --remove-orphans 2>/dev/null || true
-                    fi
-                '''
+                script {
+                    env.COMPOSE_FILE = params.TARGET_ENV == 'prod'
+                        ? env.PROD_COMPOSE_FILE
+                        : env.DEV_COMPOSE_FILE
+
+                    env.ENV_FILE = params.TARGET_ENV == 'prod'
+                        ? '.env.prod'
+                        : '.env.dev'
+
+                    def envCredentialsId = params.TARGET_ENV == 'prod'
+                        ? params.PROD_ENV_CREDENTIALS_ID
+                        : params.DEV_ENV_CREDENTIALS_ID
+
+                    if (sh(script: 'docker compose version >/dev/null 2>&1', returnStatus: true) == 0) {
+                        env.COMPOSE_CMD = 'docker compose'
+                    } else if (sh(script: 'command -v docker-compose >/dev/null 2>&1', returnStatus: true) == 0) {
+                        env.COMPOSE_CMD = 'docker-compose'
+                    } else {
+                        error("Neither docker compose nor docker-compose is available")
+                    }
+
+                    withCredentials([string(credentialsId: envCredentialsId, variable: 'APP_ENV_CONTENT')]) {
+                        writeFile file: env.ENV_FILE, text: APP_ENV_CONTENT.trim() + '\n'
+                    }
+
+                    echo "Target environment: ${params.TARGET_ENV}"
+                    echo "Compose file: ${env.COMPOSE_FILE}"
+                    echo "Compose command: ${env.COMPOSE_CMD}"
+                }
             }
         }
 
-        stage('Build Images') {
+        stage('Build') {
             steps {
                 sh '''
-                    if docker compose version >/dev/null 2>&1; then
-                      COMPOSE_BIN="docker compose"
-                    else
-                      COMPOSE_BIN="docker-compose"
-                    fi
                     CACHE_FLAG=""
                     if [ "${NO_CACHE}" = "true" ]; then
                       CACHE_FLAG="--no-cache"
                     fi
 
-                    if [ "${TARGET_ENV}" = "prod" ]; then
-                      ${COMPOSE_BIN} -f "${COMPOSE_PROD}" build ${CACHE_FLAG}
-                    else
-                      ${COMPOSE_BIN} -f "${COMPOSE_DEV_CI}" build ${CACHE_FLAG}
-                    fi
+                    ${COMPOSE_CMD} -f "${COMPOSE_FILE}" build ${CACHE_FLAG}
                 '''
             }
         }
@@ -117,17 +105,15 @@ EOF
         stage('Deploy') {
             steps {
                 sh '''
-                    if docker compose version >/dev/null 2>&1; then
-                      COMPOSE_BIN="docker compose"
-                    else
-                      COMPOSE_BIN="docker-compose"
-                    fi
+                    ${COMPOSE_CMD} -f "${COMPOSE_FILE}" down -v --remove-orphans 2>/dev/null || true
+
                     if [ "${TARGET_ENV}" = "prod" ]; then
-                      ${COMPOSE_BIN} -f "${COMPOSE_PROD}" up -d
+                      ${COMPOSE_CMD} -f "${COMPOSE_FILE}" up -d
                     else
                       DEV_FRONTEND_PORT=18081 DEV_BACKEND_PORT=15000 DEV_MONGO_PORT=37017 \
-                        ${COMPOSE_BIN} -f "${COMPOSE_DEV_CI}" up -d
+                        ${COMPOSE_CMD} -f "${COMPOSE_FILE}" up -d
                     fi
+
                     sleep 10
                 '''
             }
@@ -145,38 +131,43 @@ EOF
                 )]) {
                     sh '''
                         echo "${DOCKERHUB_PASS}" | docker login -u "${DOCKERHUB_USER}" --password-stdin
-                        docker push maharshi86/react-node-ci-backend:prod-latest
-                        docker push maharshi86/react-node-ci-frontend:prod-latest
-                        docker push maharshi86/react-node-ci-nginx:prod-latest
+                        docker push ${DOCKERHUB_NAMESPACE}/react-node-ci-backend:prod-latest
+                        docker push ${DOCKERHUB_NAMESPACE}/react-node-ci-frontend:prod-latest
+                        docker push ${DOCKERHUB_NAMESPACE}/react-node-ci-nginx:prod-latest
                         docker logout || true
                     '''
                 }
             }
         }
 
-        stage('Verify') {
+        stage('Health Check') {
             steps {
-                sh "docker ps"
+                sh '''
+                    docker ps
+
+                    if [ "${TARGET_ENV}" = "prod" ]; then
+                      curl -fsS http://localhost/api >/dev/null
+                      curl -fsS http://localhost/ >/dev/null
+                    else
+                      curl -fsS http://localhost:15000/api >/dev/null
+                      curl -fsS http://localhost:18081/ >/dev/null
+                    fi
+                '''
             }
         }
     }
 
     post {
         success {
-            echo "Deployment Successful 🚀"
+            echo 'Deployment Successful'
         }
         failure {
-            echo "Deployment Failed ❌"
+            echo 'Deployment Failed'
             sh '''
-                if docker compose version >/dev/null 2>&1; then
-                  COMPOSE_BIN="docker compose"
+                if [ -n "${COMPOSE_CMD}" ] && [ -n "${COMPOSE_FILE}" ]; then
+                  ${COMPOSE_CMD} -f "${COMPOSE_FILE}" logs || true
                 else
-                  COMPOSE_BIN="docker-compose"
-                fi
-                if [ "${TARGET_ENV}" = "prod" ]; then
-                  ${COMPOSE_BIN} -f "${COMPOSE_PROD}" logs || true
-                else
-                  ${COMPOSE_BIN} -f "${COMPOSE_DEV_CI}" logs || true
+                  echo "Compose values are unavailable; skipping compose logs."
                 fi
             '''
         }
