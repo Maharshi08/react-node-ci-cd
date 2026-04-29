@@ -62,6 +62,10 @@ pipeline {
                         ? env.PROD_COMPOSE_FILE
                         : env.DEV_COMPOSE_FILE
 
+                    env.IMAGE_TAG = params.TARGET_ENV == 'prod'
+                        ? "prod-${env.BUILD_NUMBER}-${env.GIT_COMMIT.take(7)}"
+                        : 'dev-local'
+
                     env.ENV_FILE = params.TARGET_ENV == 'prod'
                         ? '.env.prod'
                         : '.env.dev'
@@ -88,6 +92,7 @@ pipeline {
                     echo "Target environment: ${params.TARGET_ENV}"
                     echo "Compose file: ${env.COMPOSE_FILE}"
                     echo "Compose command: ${env.COMPOSE_CMD}"
+                    echo "Image tag: ${env.IMAGE_TAG}"
                 }
             }
         }
@@ -101,6 +106,36 @@ pipeline {
                     fi
 
                     ${COMPOSE_CMD} -f "${COMPOSE_FILE}" build ${CACHE_FLAG}
+                '''
+            }
+        }
+
+        stage('Push Images') {
+            when {
+                expression { params.TARGET_ENV == 'prod' && params.PUSH_TO_DOCKERHUB }
+            }
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: params.DOCKERHUB_CREDENTIALS_ID,
+                    usernameVariable: 'DOCKERHUB_USER',
+                    passwordVariable: 'DOCKERHUB_PASS'
+                )]) {
+                    sh '''
+                        echo "${DOCKERHUB_PASS}" | docker login -u "${DOCKERHUB_USER}" --password-stdin
+                        ${COMPOSE_CMD} -f "${COMPOSE_FILE}" push
+                    '''
+                }
+            }
+        }
+
+        stage('Pull Images') {
+            when {
+                expression { params.TARGET_ENV == 'prod' && params.PUSH_TO_DOCKERHUB }
+            }
+            steps {
+                sh '''
+                    ${COMPOSE_CMD} -f "${COMPOSE_FILE}" pull
+                    docker logout || true
                 '''
             }
         }
@@ -122,38 +157,17 @@ pipeline {
             }
         }
 
-        stage('Push Images') {
-            when {
-                expression { params.TARGET_ENV == 'prod' && params.PUSH_TO_DOCKERHUB }
-            }
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: params.DOCKERHUB_CREDENTIALS_ID,
-                    usernameVariable: 'DOCKERHUB_USER',
-                    passwordVariable: 'DOCKERHUB_PASS'
-                )]) {
-                    sh '''
-                        echo "${DOCKERHUB_PASS}" | docker login -u "${DOCKERHUB_USER}" --password-stdin
-                        docker push ${DOCKERHUB_NAMESPACE}/react-node-ci-backend:prod-latest
-                        docker push ${DOCKERHUB_NAMESPACE}/react-node-ci-frontend:prod-latest
-                        docker push ${DOCKERHUB_NAMESPACE}/react-node-ci-nginx:prod-latest
-                        docker logout || true
-                    '''
-                }
-            }
-        }
-
         stage('Health Check') {
             steps {
                 sh '''
                     docker ps
 
                     if [ "${TARGET_ENV}" = "prod" ]; then
-                      curl -fsS http://localhost/api >/dev/null
-                      curl -fsS http://localhost/ >/dev/null
+                      ${COMPOSE_CMD} -f "${COMPOSE_FILE}" exec -T nginx-prod wget -qO- http://localhost/api >/dev/null
+                      ${COMPOSE_CMD} -f "${COMPOSE_FILE}" exec -T nginx-prod wget -qO- http://localhost/ >/dev/null
                     else
-                      curl -fsS http://localhost:15000/api >/dev/null
-                      curl -fsS http://localhost:18081/ >/dev/null
+                      ${COMPOSE_CMD} -f "${COMPOSE_FILE}" exec -T backend-dev wget -qO- http://localhost:5000/api >/dev/null
+                      ${COMPOSE_CMD} -f "${COMPOSE_FILE}" exec -T frontend-dev wget -qO- http://localhost:3000/ >/dev/null
                     fi
                 '''
             }

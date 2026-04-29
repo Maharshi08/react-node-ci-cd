@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
 
   backend-prod:
-    image: maharshi86/react-node-ci-backend:prod-latest
+    image: ${DOCKERHUB_NAMESPACE:-maharshi86}/react-node-ci-backend:${IMAGE_TAG}
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -21,7 +21,7 @@ services:
     restart: unless-stopped
 
   frontend-prod:
-    image: maharshi86/react-node-ci-frontend:prod-latest
+    image: ${DOCKERHUB_NAMESPACE:-maharshi86}/react-node-ci-frontend:${IMAGE_TAG}
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -32,7 +32,7 @@ services:
     restart: unless-stopped
 
   nginx-prod:
-    image: maharshi86/react-node-ci-nginx:prod-latest
+    image: ${DOCKERHUB_NAMESPACE:-maharshi86}/react-node-ci-nginx:${IMAGE_TAG}
     build:
       context: ./nginx
       dockerfile: Dockerfile
