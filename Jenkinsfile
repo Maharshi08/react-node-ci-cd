@@ -78,8 +78,11 @@ pipeline {
                         error("Neither docker compose nor docker-compose is available")
                     }
 
-                    withCredentials([string(credentialsId: envCredentialsId, variable: 'APP_ENV_CONTENT')]) {
-                        writeFile file: env.ENV_FILE, text: APP_ENV_CONTENT.trim() + '\n'
+                    withCredentials([file(credentialsId: envCredentialsId, variable: 'APP_ENV_FILE')]) {
+                        sh '''
+                            cp "${APP_ENV_FILE}" "${ENV_FILE}"
+                            chmod 600 "${ENV_FILE}"
+                        '''
                     }
 
                     echo "Target environment: ${params.TARGET_ENV}"
