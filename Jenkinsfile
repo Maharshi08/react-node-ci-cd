@@ -62,8 +62,13 @@ pipeline {
                         ? env.PROD_COMPOSE_FILE
                         : env.DEV_COMPOSE_FILE
 
+                    def shortCommit = sh(
+                        script: 'git rev-parse --short HEAD',
+                        returnStdout: true
+                    ).trim()
+
                     env.IMAGE_TAG = params.TARGET_ENV == 'prod'
-                        ? "prod-${env.BUILD_NUMBER}-${env.GIT_COMMIT.take(7)}"
+                        ? "prod-${env.BUILD_NUMBER}-${shortCommit}"
                         : 'dev-local'
 
                     env.ENV_FILE = params.TARGET_ENV == 'prod'
