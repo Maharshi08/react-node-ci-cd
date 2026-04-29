@@ -46,6 +46,7 @@ pipeline {
     environment {
         DEV_COMPOSE_FILE = 'docker-compose.ci.dev.yml'
         PROD_COMPOSE_FILE = 'docker-compose.prod.yml'
+        PROD_BUILD_COMPOSE_FILE = 'docker-compose.build.yml'
     }
 
     stages {
@@ -60,6 +61,10 @@ pipeline {
                 script {
                     env.COMPOSE_FILE = params.TARGET_ENV == 'prod'
                         ? env.PROD_COMPOSE_FILE
+                        : env.DEV_COMPOSE_FILE
+
+                    env.BUILD_COMPOSE_FILE = params.TARGET_ENV == 'prod'
+                        ? env.PROD_BUILD_COMPOSE_FILE
                         : env.DEV_COMPOSE_FILE
 
                     def shortCommit = sh(
@@ -96,6 +101,7 @@ pipeline {
 
                     echo "Target environment: ${params.TARGET_ENV}"
                     echo "Compose file: ${env.COMPOSE_FILE}"
+                    echo "Build compose file: ${env.BUILD_COMPOSE_FILE}"
                     echo "Compose command: ${env.COMPOSE_CMD}"
                     echo "Image tag: ${env.IMAGE_TAG}"
                 }
@@ -110,7 +116,7 @@ pipeline {
                       CACHE_FLAG="--no-cache"
                     fi
 
-                    ${COMPOSE_CMD} -f "${COMPOSE_FILE}" build ${CACHE_FLAG}
+                    ${COMPOSE_CMD} -f "${BUILD_COMPOSE_FILE}" build ${CACHE_FLAG}
                 '''
             }
         }
@@ -127,7 +133,7 @@ pipeline {
                 )]) {
                     sh '''
                         echo "${DOCKERHUB_PASS}" | docker login -u "${DOCKERHUB_USER}" --password-stdin
-                        ${COMPOSE_CMD} -f "${COMPOSE_FILE}" push
+                        ${COMPOSE_CMD} -f "${BUILD_COMPOSE_FILE}" push
                     '''
                 }
             }
@@ -168,11 +174,21 @@ pipeline {
                     docker ps
 
                     if [ "${TARGET_ENV}" = "prod" ]; then
-                      ${COMPOSE_CMD} -f "${COMPOSE_FILE}" exec -T nginx-prod wget -qO- http://localhost/api >/dev/null
-                      ${COMPOSE_CMD} -f "${COMPOSE_FILE}" exec -T nginx-prod wget -qO- http://localhost/ >/dev/null
+                      for i in $(seq 1 10); do
+                        ${COMPOSE_CMD} -f "${COMPOSE_FILE}" exec -T nginx-prod wget -qO- http://localhost/api >/dev/null &&
+                        ${COMPOSE_CMD} -f "${COMPOSE_FILE}" exec -T nginx-prod wget -qO- http://localhost/ >/dev/null &&
+                        exit 0
+                        sleep 3
+                      done
+                      exit 1
                     else
-                      ${COMPOSE_CMD} -f "${COMPOSE_FILE}" exec -T backend-dev wget -qO- http://localhost:5000/api >/dev/null
-                      ${COMPOSE_CMD} -f "${COMPOSE_FILE}" exec -T frontend-dev wget -qO- http://localhost:3000/ >/dev/null
+                      for i in $(seq 1 10); do
+                        ${COMPOSE_CMD} -f "${COMPOSE_FILE}" exec -T backend-dev wget -qO- http://localhost:5000/api >/dev/null &&
+                        ${COMPOSE_CMD} -f "${COMPOSE_FILE}" exec -T frontend-dev wget -qO- http://localhost:3000/ >/dev/null &&
+                        exit 0
+                        sleep 3
+                      done
+                      exit 1
                     fi
                 '''
             }

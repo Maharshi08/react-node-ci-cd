@@ -7,9 +7,6 @@ services:
 
   backend-prod:
     image: ${DOCKERHUB_NAMESPACE:-maharshi86}/react-node-ci-backend:${IMAGE_TAG}
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
     env_file:
       - ./.env.prod
     ports:
@@ -22,9 +19,6 @@ services:
 
   frontend-prod:
     image: ${DOCKERHUB_NAMESPACE:-maharshi86}/react-node-ci-frontend:${IMAGE_TAG}
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
     depends_on:
       - backend-prod
     networks:
@@ -33,9 +27,6 @@ services:
 
   nginx-prod:
     image: ${DOCKERHUB_NAMESPACE:-maharshi86}/react-node-ci-nginx:${IMAGE_TAG}
-    build:
-      context: ./nginx
-      dockerfile: Dockerfile
     ports:
       - "80:80"
     depends_on:

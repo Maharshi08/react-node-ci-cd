@@ -1,0 +1,18 @@
+services:
+  backend-prod:
+    image: ${DOCKERHUB_NAMESPACE:-maharshi86}/react-node-ci-backend:${IMAGE_TAG}
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+
+  frontend-prod:
+    image: ${DOCKERHUB_NAMESPACE:-maharshi86}/react-node-ci-frontend:${IMAGE_TAG}
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+
+  nginx-prod:
+    image: ${DOCKERHUB_NAMESPACE:-maharshi86}/react-node-ci-nginx:${IMAGE_TAG}
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
