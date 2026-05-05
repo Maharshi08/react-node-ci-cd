@@ -28,7 +28,7 @@ services:
   nginx-prod:
     image: ${DOCKERHUB_NAMESPACE:-maharshi86}/react-node-ci-nginx:${IMAGE_TAG}
     ports:
-      - "80:80"
+      - "8082:80"
     depends_on:
       - frontend-prod
       - backend-prod
