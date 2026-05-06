@@ -133,25 +133,29 @@ pipeline {
             }
         }
 
-  stage('Deploy') {
+ stage('Deploy') {
     steps {
         withCredentials([file(credentialsId: 'ec2-key', variable: 'KEY')]) {
             sh '''
             echo "Deploying to EC2..."
 
-            ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@13.233.215.134 << 'EOF'
-
+            ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@13.233.215.134 '
+            
             set -e
+
+            COMPOSE_FILE=docker-compose.ci.dev.yml
 
             mkdir -p /home/ubuntu/app
             cd /home/ubuntu/app
 
-            docker compose down -v --remove-orphans || true
-            docker compose up -d
+            echo "Stopping containers..."
+            docker compose -f $COMPOSE_FILE down -v --remove-orphans || true
+
+            echo "Starting containers..."
+            docker compose -f $COMPOSE_FILE up -d
 
             docker ps
-
-            EOF
+            '
             '''
         }
     }
