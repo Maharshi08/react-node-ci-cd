@@ -139,20 +139,18 @@ pipeline {
             sh '''
             echo "Deploying to EC2..."
 
+            # copy project to EC2
+            scp -i $KEY -o StrictHostKeyChecking=no -r . ubuntu@13.233.215.134:/home/ubuntu/app
+
+            # run on EC2
             ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@13.233.215.134 '
             
             set -e
 
-            COMPOSE_FILE=docker-compose.prod.yml
-
-            mkdir -p /home/ubuntu/app
             cd /home/ubuntu/app
 
-            echo "Stopping containers..."
-            docker compose -f $COMPOSE_FILE down -v --remove-orphans || true
-
-            echo "Starting containers..."
-            docker compose -f $COMPOSE_FILE up -d
+            docker compose -f docker-compose.prod.yml down -v --remove-orphans || true
+            docker compose -f docker-compose.prod.yml up -d
 
             docker ps
             '
