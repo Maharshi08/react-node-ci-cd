@@ -143,7 +143,7 @@ pipeline {
             
             set -e
 
-            COMPOSE_FILE=docker-compose.ci.dev.yml
+            COMPOSE_FILE=docker-compose.prod.yml
 
             mkdir -p /home/ubuntu/app
             cd /home/ubuntu/app
