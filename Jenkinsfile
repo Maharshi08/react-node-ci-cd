@@ -47,6 +47,8 @@ pipeline {
         DEV_COMPOSE_FILE = 'docker-compose.ci.dev.yml'
         PROD_COMPOSE_FILE = 'docker-compose.prod.yml'
         PROD_BUILD_COMPOSE_FILE = 'docker-compose.build.yml'
+        EC2_HOST = "ubuntu@13.233.215.134"
+        EC2_KEY = "/home/alite-148/Downloads/setup word files/AWS/ec2-key.pem"
     }
 
     stages {
@@ -150,50 +152,57 @@ pipeline {
                 '''
             }
         }
-
         stage('Deploy') {
-            steps {
-                sh '''
-                    ${COMPOSE_CMD} -f "${COMPOSE_FILE}" down -v --remove-orphans 2>/dev/null || true
+          steps {
+             sh '''
+              echo "Deploying to EC2..."
+ 
+               ssh -i ${EC2_KEY} -o StrictHostKeyChecking=no ${EC2_HOST} << EOF
 
-                    if [ "${TARGET_ENV}" = "prod" ]; then
-                      ${COMPOSE_CMD} -f "${COMPOSE_FILE}" up -d
-                    else
-                      DEV_FRONTEND_PORT=18081 DEV_BACKEND_PORT=15000 DEV_MONGO_PORT=37017 \
-                        ${COMPOSE_CMD} -f "${COMPOSE_FILE}" up -d
-                    fi
+               cd /home/ubuntu/app || mkdir -p /home/ubuntu/app && cd /home/ubuntu/app
+  
+                  echo "Stopping old containers..."
+                 docker compose -f ${COMPOSE_FILE} down -v --remove-orphans || true
 
-                    sleep 10
-                '''
-            }
-        }
+               echo "Starting new containers..."
 
-        stage('Health Check') {
-            steps {
-                sh '''
-                    docker ps
+            if [ "${TARGET_ENV}" = "prod" ]; then
+               docker compose -f ${COMPOSE_FILE} up -d
+           else
+                DEV_FRONTEND_PORT=18081 DEV_BACKEND_PORT=15000 DEV_MONGO_PORT=37017 \
+                docker compose -f ${COMPOSE_FILE} up -d
+            fi
 
-                    if [ "${TARGET_ENV}" = "prod" ]; then
-                      for i in $(seq 1 10); do
-                        ${COMPOSE_CMD} -f "${COMPOSE_FILE}" exec -T nginx-prod wget -qO- http://localhost/api >/dev/null &&
-                        ${COMPOSE_CMD} -f "${COMPOSE_FILE}" exec -T nginx-prod wget -qO- http://localhost/ >/dev/null &&
-                        exit 0
-                        sleep 3
-                      done
-                      exit 1
-                    else
-                      for i in $(seq 1 10); do
-                        ${COMPOSE_CMD} -f "${COMPOSE_FILE}" exec -T backend-dev wget -qO- http://localhost:5000/api >/dev/null &&
-                        ${COMPOSE_CMD} -f "${COMPOSE_FILE}" exec -T frontend-dev wget -qO- http://localhost:3000/ >/dev/null &&
-                        exit 0
-                        sleep 3
-                      done
-                      exit 1
-                    fi
-                '''
-            }
-        }
+            sleep 10
+
+            docker ps
+
+              EOF
+            '''
     }
+}
+
+       stage('Health Check') {
+    steps {
+        sh '''
+        ssh -i ${EC2_KEY} -o StrictHostKeyChecking=no ${EC2_HOST} << EOF
+
+        echo "Running health check..."
+
+        if [ "${TARGET_ENV}" = "prod" ]; then
+          for i in $(seq 1 10); do
+            curl -f http://${EC2_HOST}/api && curl -f http://${EC2_HOST}/ && exit 0
+            sleep 3
+          done
+          exit 1
+        else
+          curl -f http://${EC2_HOST}:5000/api && curl -f http://${EC2_HOST}:3000/ && exit 0
+        fi
+
+        EOF
+        '''
+    }
+}
 
     post {
         success {
