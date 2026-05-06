@@ -49,7 +49,7 @@ pipeline {
         PROD_BUILD_COMPOSE_FILE = 'docker-compose.build.yml'
 
         EC2_HOST = "ubuntu@13.233.215.134"
-        EC2_KEY = "/home/jenkins/ec2-key.pem"
+      
     }
 
     stages {
@@ -133,34 +133,27 @@ pipeline {
             }
         }
 
-      stage('Deploy') {
+  stage('Deploy') {
     steps {
-        sh '''
-        echo "Deploying to EC2..."
+        withCredentials([file(credentialsId: 'ec2-key', variable: 'KEY')]) {
+            sh '''
+            echo "Deploying to EC2..."
 
-        ssh -i ${EC2_KEY} -o StrictHostKeyChecking=no ${EC2_HOST} << EOF
+            ssh -i $KEY -o StrictHostKeyChecking=no ubuntu@13.233.215.134 << 'EOF'
 
-        set -e
+            set -e
 
-        mkdir -p /home/ubuntu/app
-        cd /home/ubuntu/app
+            mkdir -p /home/ubuntu/app
+            cd /home/ubuntu/app
 
-        echo "Stopping old containers..."
-        docker compose -f ${COMPOSE_FILE} down -v --remove-orphans || true
+            docker compose down -v --remove-orphans || true
+            docker compose up -d
 
-        echo "Starting new containers..."
+            docker ps
 
-        if [ "$TARGET_ENV" = "prod" ]; then
-            docker compose -f ${COMPOSE_FILE} up -d
-        else
-            DEV_FRONTEND_PORT=18081 DEV_BACKEND_PORT=15000 DEV_MONGO_PORT=37017 \
-            docker compose -f ${COMPOSE_FILE} up -d
-        fi
-
-        docker ps
-
-        EOF
-        '''
+            EOF
+            '''
+        }
     }
 }
 
