@@ -34,12 +34,12 @@ pipeline {
         string(
             name: 'DEV_ENV_CREDENTIALS_ID',
             defaultValue: 'react-node-ci-env-dev',
-            description: 'Jenkins secret text credentials ID for dev env'
+            description: 'Dev env credentials'
         )
         string(
             name: 'PROD_ENV_CREDENTIALS_ID',
             defaultValue: 'react-node-ci-env-prod',
-            description: 'Jenkins secret text credentials ID for prod env'
+            description: 'Prod env credentials'
         )
     }
 
@@ -47,11 +47,13 @@ pipeline {
         DEV_COMPOSE_FILE = 'docker-compose.ci.dev.yml'
         PROD_COMPOSE_FILE = 'docker-compose.prod.yml'
         PROD_BUILD_COMPOSE_FILE = 'docker-compose.build.yml'
+
         EC2_HOST = "ubuntu@13.233.215.134"
-        EC2_KEY = "/home/alite-148/Downloads/setup word files/AWS/ec2-key.pem"
+        EC2_KEY = "/home/jenkins/ec2-key.pem"
     }
 
     stages {
+
         stage('Checkout') {
             steps {
                 checkout scm
@@ -78,33 +80,23 @@ pipeline {
                         ? "prod-${env.BUILD_NUMBER}-${shortCommit}"
                         : 'dev-local'
 
-                    env.ENV_FILE = params.TARGET_ENV == 'prod'
-                        ? '.env.prod'
-                        : '.env.dev'
-
                     def envCredentialsId = params.TARGET_ENV == 'prod'
                         ? params.PROD_ENV_CREDENTIALS_ID
                         : params.DEV_ENV_CREDENTIALS_ID
 
                     if (sh(script: 'docker compose version >/dev/null 2>&1', returnStatus: true) == 0) {
                         env.COMPOSE_CMD = 'docker compose'
-                    } else if (sh(script: 'command -v docker-compose >/dev/null 2>&1', returnStatus: true) == 0) {
-                        env.COMPOSE_CMD = 'docker-compose'
                     } else {
-                        error("Neither docker compose nor docker-compose is available")
+                        env.COMPOSE_CMD = 'docker-compose'
                     }
 
                     withCredentials([file(credentialsId: envCredentialsId, variable: 'APP_ENV_FILE')]) {
                         sh '''
-                            cp "${APP_ENV_FILE}" "${ENV_FILE}"
-                            chmod 600 "${ENV_FILE}"
+                            cp "${APP_ENV_FILE}" .env
                         '''
                     }
 
-                    echo "Target environment: ${params.TARGET_ENV}"
-                    echo "Compose file: ${env.COMPOSE_FILE}"
-                    echo "Build compose file: ${env.BUILD_COMPOSE_FILE}"
-                    echo "Compose command: ${env.COMPOSE_CMD}"
+                    echo "Target: ${params.TARGET_ENV}"
                     echo "Image tag: ${env.IMAGE_TAG}"
                 }
             }
@@ -113,12 +105,12 @@ pipeline {
         stage('Build') {
             steps {
                 sh '''
-                    CACHE_FLAG=""
-                    if [ "${NO_CACHE}" = "true" ]; then
-                      CACHE_FLAG="--no-cache"
-                    fi
+                CACHE_FLAG=""
+                if [ "${NO_CACHE}" = "true" ]; then
+                  CACHE_FLAG="--no-cache"
+                fi
 
-                    ${COMPOSE_CMD} -f "${BUILD_COMPOSE_FILE}" build ${CACHE_FLAG}
+                ${COMPOSE_CMD} -f "${BUILD_COMPOSE_FILE}" build ${CACHE_FLAG}
                 '''
             }
         }
@@ -130,93 +122,78 @@ pipeline {
             steps {
                 withCredentials([usernamePassword(
                     credentialsId: params.DOCKERHUB_CREDENTIALS_ID,
-                    usernameVariable: 'DOCKERHUB_USER',
-                    passwordVariable: 'DOCKERHUB_PASS'
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
                 )]) {
                     sh '''
-                        echo "${DOCKERHUB_PASS}" | docker login -u "${DOCKERHUB_USER}" --password-stdin
-                        ${COMPOSE_CMD} -f "${BUILD_COMPOSE_FILE}" push
+                    echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                    ${COMPOSE_CMD} -f "${BUILD_COMPOSE_FILE}" push
                     '''
                 }
             }
         }
 
-        stage('Pull Images') {
-            when {
-                expression { params.TARGET_ENV == 'prod' && params.PUSH_TO_DOCKERHUB }
-            }
+        stage('Deploy') {
             steps {
-                sh '''
-                    ${COMPOSE_CMD} -f "${COMPOSE_FILE}" pull
-                    docker logout || true
-                '''
+                sh """
+                echo "Deploying to EC2..."
+
+                ssh -i ${EC2_KEY} -o StrictHostKeyChecking=no ${EC2_HOST} '
+                
+                set -e
+
+                mkdir -p /home/ubuntu/app
+                cd /home/ubuntu/app
+
+                echo "Stopping old containers..."
+                docker compose -f ${COMPOSE_FILE} down -v --remove-orphans || true
+
+                echo "Starting new containers..."
+
+                if [ "${TARGET_ENV}" = "prod" ]; then
+                    docker compose -f ${COMPOSE_FILE} up -d
+                else
+                    DEV_FRONTEND_PORT=18081 DEV_BACKEND_PORT=15000 DEV_MONGO_PORT=37017 \
+                    docker compose -f ${COMPOSE_FILE} up -d
+                fi
+
+                docker ps
+                '
+                """
             }
         }
-        stage('Deploy') {
-          steps {
-             sh '''
-              echo "Deploying to EC2..."
- 
-               ssh -i ${EC2_KEY} -o StrictHostKeyChecking=no ${EC2_HOST} << EOF
 
-               cd /home/ubuntu/app || mkdir -p /home/ubuntu/app && cd /home/ubuntu/app
-  
-                  echo "Stopping old containers..."
-                 docker compose -f ${COMPOSE_FILE} down -v --remove-orphans || true
+        stage('Health Check') {
+            steps {
+                sh """
+                echo "Running health check..."
 
-               echo "Starting new containers..."
+                ssh -i ${EC2_KEY} -o StrictHostKeyChecking=no ${EC2_HOST} '
 
-            if [ "${TARGET_ENV}" = "prod" ]; then
-               docker compose -f ${COMPOSE_FILE} up -d
-           else
-                DEV_FRONTEND_PORT=18081 DEV_BACKEND_PORT=15000 DEV_MONGO_PORT=37017 \
-                docker compose -f ${COMPOSE_FILE} up -d
-            fi
+                set -e
 
-            sleep 10
+                if [ "${TARGET_ENV}" = "prod" ]; then
+                    for i in $(seq 1 10); do
+                        curl -f http://localhost/api && curl -f http://localhost/ && exit 0
+                        sleep 3
+                    done
+                    exit 1
+                else
+                    curl -f http://localhost:5000/api && curl -f http://localhost:3000/ && exit 0
+                fi
 
-            docker ps
-
-              EOF
-            '''
+                '
+                """
+            }
+        }
     }
-}
-
-       stage('Health Check') {
-    steps {
-        sh '''
-        ssh -i ${EC2_KEY} -o StrictHostKeyChecking=no ${EC2_HOST} << EOF
-
-        echo "Running health check..."
-
-        if [ "${TARGET_ENV}" = "prod" ]; then
-          for i in $(seq 1 10); do
-            curl -f http://${EC2_HOST}/api && curl -f http://${EC2_HOST}/ && exit 0
-            sleep 3
-          done
-          exit 1
-        else
-          curl -f http://${EC2_HOST}:5000/api && curl -f http://${EC2_HOST}:3000/ && exit 0
-        fi
-
-        EOF
-        '''
-    }
-}
 
     post {
         success {
-            echo 'Deployment Successful'
+            echo "Deployment Successful"
         }
         failure {
-            echo 'Deployment Failed'
-            sh '''
-                if [ -n "${COMPOSE_CMD}" ] && [ -n "${COMPOSE_FILE}" ]; then
-                  ${COMPOSE_CMD} -f "${COMPOSE_FILE}" logs || true
-                else
-                  echo "Compose values are unavailable; skipping compose logs."
-                fi
-            '''
+            echo "Deployment Failed"
         }
     }
 }
