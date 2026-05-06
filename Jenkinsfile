@@ -133,59 +133,60 @@ pipeline {
             }
         }
 
-        stage('Deploy') {
-            steps {
-                sh """
-                echo "Deploying to EC2..."
+      stage('Deploy') {
+    steps {
+        sh '''
+        echo "Deploying to EC2..."
 
-                ssh -i ${EC2_KEY} -o StrictHostKeyChecking=no ${EC2_HOST} '
-                
-                set -e
+        ssh -i ${EC2_KEY} -o StrictHostKeyChecking=no ${EC2_HOST} << EOF
 
-                mkdir -p /home/ubuntu/app
-                cd /home/ubuntu/app
+        set -e
 
-                echo "Stopping old containers..."
-                docker compose -f ${COMPOSE_FILE} down -v --remove-orphans || true
+        mkdir -p /home/ubuntu/app
+        cd /home/ubuntu/app
 
-                echo "Starting new containers..."
+        echo "Stopping old containers..."
+        docker compose -f ${COMPOSE_FILE} down -v --remove-orphans || true
 
-                if [ "${TARGET_ENV}" = "prod" ]; then
-                    docker compose -f ${COMPOSE_FILE} up -d
-                else
-                    DEV_FRONTEND_PORT=18081 DEV_BACKEND_PORT=15000 DEV_MONGO_PORT=37017 \
-                    docker compose -f ${COMPOSE_FILE} up -d
-                fi
+        echo "Starting new containers..."
 
-                docker ps
-                '
-                """
-            }
-        }
+        if [ "$TARGET_ENV" = "prod" ]; then
+            docker compose -f ${COMPOSE_FILE} up -d
+        else
+            DEV_FRONTEND_PORT=18081 DEV_BACKEND_PORT=15000 DEV_MONGO_PORT=37017 \
+            docker compose -f ${COMPOSE_FILE} up -d
+        fi
+
+        docker ps
+
+        EOF
+        '''
+    }
+}
 
         stage('Health Check') {
-            steps {
-                sh """
-                echo "Running health check..."
+    steps {
+        sh '''
+        echo "Running health check..."
 
-                ssh -i ${EC2_KEY} -o StrictHostKeyChecking=no ${EC2_HOST} '
+        ssh -i ${EC2_KEY} -o StrictHostKeyChecking=no ${EC2_HOST} << EOF
 
-                set -e
+        set -e
 
-                if [ "${TARGET_ENV}" = "prod" ]; then
-                    for i in $(seq 1 10); do
-                        curl -f http://localhost/api && curl -f http://localhost/ && exit 0
-                        sleep 3
-                    done
-                    exit 1
-                else
-                    curl -f http://localhost:5000/api && curl -f http://localhost:3000/ && exit 0
-                fi
+        if [ "$TARGET_ENV" = "prod" ]; then
+          for i in $(seq 1 10); do
+            curl -f http://localhost/api && curl -f http://localhost/ && exit 0
+            sleep 3
+          done
+          exit 1
+        else
+          curl -f http://localhost:5000/api && curl -f http://localhost:3000/ && exit 0
+        fi
 
-                '
-                """
-            }
-        }
+        EOF
+        '''
+    }
+}
     }
 
     post {
